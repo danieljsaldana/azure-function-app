@@ -14,7 +14,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function for inserting or updating a number processed a request.')
 
     try:
-        # Crear cliente de Cosmos DB
+        # Crear cliente de Cosmos DB 
         client = create_cosmos_client()
         database = client.get_database_client(os.environ["COSMOS_DB_DATABASE_NAME"])
         container = database.get_container_client(os.environ["COSMOS_DB_CONTAINER_NAME"])
