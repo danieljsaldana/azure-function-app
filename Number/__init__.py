@@ -1,35 +1,50 @@
 import os
-import azure.functions as func
 import logging
-from azure.cosmos import CosmosClient, PartitionKey
-import random
+import azure.functions as func
+from azure.cosmos import CosmosClient
 import uuid
 
+def create_cosmos_client():
+    """Crea y retorna un cliente de Cosmos DB."""
+    endpoint = os.environ["COSMOS_DB_ENDPOINT"]
+    key = os.environ["COSMOS_DB_KEY"]
+    return CosmosClient(endpoint, key)
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
+    logging.info('Python HTTP trigger function for inserting or updating a number processed a request.')
 
-    # Obtener la configuración de Cosmos DB desde variables de entorno
-    endpoint = os.environ["COSMOSDB_ENDPOINT"]
-    key = os.environ["COSMOSDB_KEY"]
-    database_name = os.environ["COSMOSDB_DATABASE"]
-    container_name = os.environ["COSMOSDB_CONTAINER"]
-
-    # Crear cliente de Cosmos DB
-    client = CosmosClient(endpoint, key)
-    database = client.get_database_client(database=database_name)
-    container = database.get_container_client(container=container_name)
-
-    # Generar número aleatorio
-    number = random.randint(0, 10)
-
-    # Crear un ID único para el nuevo documento
-    unique_id = str(uuid.uuid4())
-
-    # Crear y Insertar el documento en Cosmos DB
-    item = {"id": unique_id, "number": number}
     try:
-        container.upsert_item(item)
-        return func.HttpResponse(f"Number {number} inserted into Cosmos DB with ID {unique_id}", status_code=200)
+        # Crear cliente de Cosmos DB
+        client = create_cosmos_client()
+        database = client.get_database_client(os.environ["COSMOS_DB_DATABASE_NAME"])
+        container = database.get_container_client(os.environ["COSMOS_DB_CONTAINER_NAME"])
+
+        # Obtener el número del cuerpo de la solicitud POST
+        req_body = req.get_json()
+        number = int(req_body.get("number", 0))  # Tomar el número del cuerpo, predeterminado a 0 si no se proporciona
+
+        # Verificar si el número está dentro del rango válido
+        if 0 <= number <= 10:
+            # Consultar si ya existe un registro en la base de datos
+            query = "SELECT * FROM c"
+            results = list(container.query_items(query, enable_cross_partition_query=True))
+
+            if results:
+                # Si existe un registro, actualizar el número
+                existing_item = results[0]
+                existing_item["number"] = number
+                container.upsert_item(existing_item)
+            else:
+                # Si no existe un registro, crear uno nuevo
+                unique_id = str(uuid.uuid4())
+                item = {"id": unique_id, "number": number}
+                container.upsert_item(item)
+
+            # Modificar aquí para el mensaje personalizado
+            return func.HttpResponse(f"He memorizado el número {number}", status_code=200)
+        else:
+            return func.HttpResponse("El número debe estar entre 0 y 10", status_code=400)
+    
     except Exception as e:
-        logging.error(f"Error inserting item into Cosmos DB: {e}")
-        return func.HttpResponse(f"Failed to insert item into Cosmos DB", status_code=500)
+        logging.error(f"Error: {e}")
+        return func.HttpResponse(f"Failed to insert/update item into Cosmos DB due to: {e}", status_code=500)
